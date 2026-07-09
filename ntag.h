@@ -32,9 +32,10 @@ public:
     bool setFd_ReaderHandshake();
     //Address=address of the byte, not address of the 16byte block
     bool readEeprom(word address, byte* pdata, byte length);//starts at address 0
-    bool readEepromMod(word address, byte* pdata, byte length);//starts at address 0
+    bool readEepromMod(uint16_t address, byte *pdata, byte length);//starts at address 0
     //Address=address of the byte, not address of the 16byte block
     bool writeEeprom(word address, byte* pdata, byte length);//starts at address 0
+    bool writeEepromMod(uint16_t address, byte* pdata, byte length);//starts at address 0
     bool readSram(word address, byte* pdata, byte length);//starts at address 0
     bool writeSram(word address, byte* pdata, byte length);//starts at address 0
     bool readRegister(REGISTER_NR regAddr, byte &value);
@@ -50,17 +51,20 @@ private:
     }BLOCK_TYPE;
     static const byte UID_LENGTH=2;
     static const byte DEFAULT_I2C_ADDRESS=0x54;
-    static const byte NTAG_BLOCK_SIZE=32;
+    static const byte NTAG_BLOCK_SIZE=4;
     static const word EEPROM_BASE_ADDR=(0x1<<4);
     static const word SRAM_BASE_ADDR=(0xF8<<4);
     //Address=address of the byte, not address of the 16byte block
     bool write(BLOCK_TYPE bt, word byteAddress, byte* pdata, byte length);
+    bool writeMod(uint16_t byteAddress, byte* pdata, byte length);
     //Address=address of the byte, not address of the 16byte block
     bool read(BLOCK_TYPE bt, word byteAddress, byte* pdata,  byte length);
+    bool readMod(uint16_t byteAddress, byte* pdata,  byte length);
     bool readBlock(BLOCK_TYPE bt, byte memBlockAddress, byte *p_data, byte data_size);
     bool readBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data, byte data_size);
     bool writeBlock(BLOCK_TYPE bt, byte memBlockAddress, byte *p_data);
     bool writeBlockAddress(BLOCK_TYPE dt, byte addr);
+    bool writeBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data);
     bool end_transmission(void);
     bool isAddressValid(BLOCK_TYPE dt, byte blocknr);
     bool setLastNdefBlock(byte memBlockAddress);

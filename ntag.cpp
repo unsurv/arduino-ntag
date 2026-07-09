@@ -149,8 +149,7 @@ bool Ntag::readEeprom(word address, byte *pdata, byte length)
 
 bool Ntag::readEepromMod(uint16_t address, byte *pdata, byte length)
 {   
-    // TODO implement readMod to split requested data into block sized chunks
-    return readBlockTwoByteAddress(address, pdata, length);
+    return readMod(address, pdata, length);
 }
 
 bool Ntag::writeEeprom(word address, byte *pdata, byte length)
@@ -159,9 +158,17 @@ bool Ntag::writeEeprom(word address, byte *pdata, byte length)
 }
 
 bool Ntag::writeEepromMod(uint16_t address, byte *pdata, byte length)
-{
+{   
+    Serial.println("writing to" + address);
+    for (size_t i = 0; i < sizeof(pdata); i++) {
+        if (pdata[i] < 16) Serial.print('0');
+        Serial.print(pdata[i], HEX);
+        Serial.print(' ');
+        }
+Serial.println();
     return writeMod(address, pdata, length);
 }
+
 
 void Ntag::releaseI2c()
 {
@@ -230,7 +237,7 @@ bool Ntag::writeMod(uint16_t byteAddress, byte* pdata, byte length)
     {
         //start address doesn't point to start of block, so the bytes in this block that precede the address range must
         //be read.
-        if(!readBlock(bt, blockNr, readbuffer, NTAG_BLOCK_SIZE))
+        if(!readBlockTwoByteAddress(blockNr*4, readbuffer, NTAG_BLOCK_SIZE))
         {
             return false;
         }
@@ -240,27 +247,30 @@ bool Ntag::writeMod(uint16_t byteAddress, byte* pdata, byte length)
             writeLength=length;
         }
         memcpy((void*)(readbuffer + (byteAddress % NTAG_BLOCK_SIZE)), pdata, writeLength);
-        if(!writeBlock(bt, blockNr, readbuffer))
+        if(!writeBlockTwoByteAddress(blockNr*4, readbuffer))
         {
             return false;
         }
         wptr+=writeLength;
         blockNr++;
     }
+
     while(wptr < pdata+length)
     {
         writeLength=(pdata+length-wptr > NTAG_BLOCK_SIZE ? NTAG_BLOCK_SIZE : pdata+length-wptr);
         if(writeLength!=NTAG_BLOCK_SIZE){
-            if(!readBlock(bt, blockNr, readbuffer, NTAG_BLOCK_SIZE))
+            if(!readBlockTwoByteAddress(blockNr*4, readbuffer, NTAG_BLOCK_SIZE))
             {
                 return false;
             }
             memcpy(readbuffer, wptr, writeLength);
         }
-        if(!writeBlock(bt, blockNr, writeLength==NTAG_BLOCK_SIZE ? wptr : readbuffer))
+
+        if(!writeBlockTwoByteAddress(blockNr*4, writeLength==NTAG_BLOCK_SIZE ? wptr : readbuffer))
         {
             return false;
         }
+
         wptr+=writeLength;
         blockNr++;
     }
@@ -305,7 +315,7 @@ bool Ntag::read(BLOCK_TYPE bt, word byteAddress, byte* pdata,  byte length)
     return true;
 }
 
-bool Ntag::readMod(BLOCK_TYPE bt, uint16_t byteAddress, byte* pdata,  byte length)
+bool Ntag::readMod(uint16_t byteAddress, byte* pdata,  byte length)
 {
     byte readbuffer[NTAG_BLOCK_SIZE];
     byte readLength;
@@ -316,14 +326,14 @@ bool Ntag::readMod(BLOCK_TYPE bt, uint16_t byteAddress, byte* pdata,  byte lengt
     {
         readLength=NTAG_BLOCK_SIZE;
     }
-    if(!readBlock(bt, byteAddress/NTAG_BLOCK_SIZE, readbuffer, readLength))
+    if(!readBlockTwoByteAddress(byteAddress/NTAG_BLOCK_SIZE, readbuffer, readLength))
     {
         return false;
     }
     readLength-=byteAddress % NTAG_BLOCK_SIZE;
     memcpy(wptr,readbuffer + (byteAddress % NTAG_BLOCK_SIZE), readLength);
     wptr+=readLength;
-    for(byte i=(byteAddress/NTAG_BLOCK_SIZE)+1;wptr<pdata+length;i++)
+    for(byte i=((byteAddress/NTAG_BLOCK_SIZE)+1)*4;wptr<pdata+length;i++)
     {
         readLength=(pdata+length-wptr > NTAG_BLOCK_SIZE ? NTAG_BLOCK_SIZE : pdata+length-wptr);
         if(!readBlockTwoByteAddress(i, wptr, readLength))
@@ -360,13 +370,13 @@ bool Ntag::readBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data, byte 
     HWire.write(highByte(memBlockAddress));
     HWire.write(lowByte(memBlockAddress));
 
-    if(data_size>NTAG_BLOCK_SIZE){
-        return false;
-    }
-    if(!end_transmission()){
+    if(data_size % NTAG_BLOCK_SIZE != 0){
         return false;
     }
 
+    if(!end_transmission()){
+        return false;
+    }
 
     if(HWire.requestFrom(_i2c_address, data_size)!=data_size){
         return false;
@@ -411,13 +421,8 @@ bool Ntag::writeBlock(BLOCK_TYPE bt, byte memBlockAddress, byte *p_data)
     return true;
 }
 
-bool Ntag::writeBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data, byte *data_size)
+bool Ntag::writeBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data)
 {
-
-    if (data_size != NTAG_BLOCK_SIZE) {
-        return false
-    }
-
 
     HWire.beginTransmission(_i2c_address);
     HWire.write(highByte(memBlockAddress));
