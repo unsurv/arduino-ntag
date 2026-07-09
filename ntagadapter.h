@@ -28,7 +28,7 @@ protected:
     static const byte MESSAGE_TYPE_NDEF=3;//TLV Block type
     Ntag* _ntag;
     bool waitUntilRfDone(unsigned int uiTimeOut);
-    static const byte UID_LENGTH=7;
+    static const byte UID_LENGTH=2;
     bool decodeTlv(byte *data, int &messageLength, int &messageStartIndex);
     int getNdefStartIndex(byte *data);
     byte uid[UID_LENGTH];  // Buffer to store the returned UID

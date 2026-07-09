@@ -9,10 +9,8 @@ HardWire HWire(1, I2C_REMAP);// | I2C_BUS_RESET); // I2c1
 #endif
 
 
-Ntag::Ntag(DEVICE_TYPE dt, byte fd_pin, byte vout_pin, byte i2c_address):
+Ntag::Ntag(DEVICE_TYPE dt, byte i2c_address):
     _dt(dt),
-    _fd_pin(fd_pin),
-    _vout_pin(vout_pin),
     _i2c_address(i2c_address),
     _rfBusyStartTime(0),
     _triggered(false)
@@ -30,22 +28,13 @@ bool Ntag::begin(){
     //Arduino Due always sends at least 2 bytes for every I²C operation.  This upsets the NTAG.
     return true;
 #endif
-    if(_vout_pin!=0){
-        pinMode(_vout_pin, INPUT);
-    }
-    pinMode(_fd_pin, INPUT);
-    _debouncer.attach(_fd_pin);
-    _debouncer.interval(5); // interval in ms
+
     return bResult;
 }
 
 bool Ntag::isReaderPresent()
 {
-    if(_vout_pin==0)
-    {
-        return false;
-    }
-    return digitalRead(_vout_pin)==HIGH;
+    return false;
 }
 
 void Ntag::detectI2cDevices(){
@@ -67,11 +56,7 @@ byte Ntag::getUidLength()
 bool Ntag::getUid(byte *uid, unsigned int uidLength)
 {
     byte data[UID_LENGTH];
-    if(!readBlock(CONFIG, 0,data,UID_LENGTH))
-    {
-        return false;
-    }
-    if(data[0]!=4)
+    if(!readBlockTwoByteAddress(0x1009, data, UID_LENGTH))
     {
         return false;
     }
@@ -162,9 +147,20 @@ bool Ntag::readEeprom(word address, byte *pdata, byte length)
     return read(USERMEM, address+EEPROM_BASE_ADDR, pdata, length);
 }
 
+bool Ntag::readEepromMod(uint16_t address, byte *pdata, byte length)
+{   
+    // TODO implement readMod to split requested data into block sized chunks
+    return readBlockTwoByteAddress(address, pdata, length);
+}
+
 bool Ntag::writeEeprom(word address, byte *pdata, byte length)
 {
     return write(USERMEM, address+EEPROM_BASE_ADDR, pdata, length);
+}
+
+bool Ntag::writeEepromMod(uint16_t address, byte *pdata, byte length)
+{
+    return writeMod(address, pdata, length);
 }
 
 void Ntag::releaseI2c()
@@ -222,6 +218,63 @@ bool Ntag::write(BLOCK_TYPE bt, word byteAddress, byte* pdata, byte length)
     return true;
 }
 
+
+bool Ntag::writeMod(uint16_t byteAddress, byte* pdata, byte length)
+{
+    byte readbuffer[NTAG_BLOCK_SIZE];
+    byte writeLength;
+    byte* wptr=pdata;
+    byte blockNr=byteAddress/NTAG_BLOCK_SIZE;
+
+    if(byteAddress % NTAG_BLOCK_SIZE !=0)
+    {
+        //start address doesn't point to start of block, so the bytes in this block that precede the address range must
+        //be read.
+        if(!readBlock(bt, blockNr, readbuffer, NTAG_BLOCK_SIZE))
+        {
+            return false;
+        }
+        writeLength=NTAG_BLOCK_SIZE - (byteAddress % NTAG_BLOCK_SIZE);
+        if(writeLength<length)
+        {
+            writeLength=length;
+        }
+        memcpy((void*)(readbuffer + (byteAddress % NTAG_BLOCK_SIZE)), pdata, writeLength);
+        if(!writeBlock(bt, blockNr, readbuffer))
+        {
+            return false;
+        }
+        wptr+=writeLength;
+        blockNr++;
+    }
+    while(wptr < pdata+length)
+    {
+        writeLength=(pdata+length-wptr > NTAG_BLOCK_SIZE ? NTAG_BLOCK_SIZE : pdata+length-wptr);
+        if(writeLength!=NTAG_BLOCK_SIZE){
+            if(!readBlock(bt, blockNr, readbuffer, NTAG_BLOCK_SIZE))
+            {
+                return false;
+            }
+            memcpy(readbuffer, wptr, writeLength);
+        }
+        if(!writeBlock(bt, blockNr, writeLength==NTAG_BLOCK_SIZE ? wptr : readbuffer))
+        {
+            return false;
+        }
+        wptr+=writeLength;
+        blockNr++;
+    }
+    _lastMemBlockWritten = --blockNr;
+    return true;
+}
+
+
+/*
+bool Ntag::readEeprom(word address, byte *pdata, byte length)
+{
+    return read(USERMEM, address, pdata, length);
+}
+*/
 bool Ntag::read(BLOCK_TYPE bt, word byteAddress, byte* pdata,  byte length)
 {
     byte readbuffer[NTAG_BLOCK_SIZE];
@@ -252,6 +305,36 @@ bool Ntag::read(BLOCK_TYPE bt, word byteAddress, byte* pdata,  byte length)
     return true;
 }
 
+bool Ntag::readMod(BLOCK_TYPE bt, uint16_t byteAddress, byte* pdata,  byte length)
+{
+    byte readbuffer[NTAG_BLOCK_SIZE];
+    byte readLength;
+    byte* wptr=pdata;
+
+    readLength=(byteAddress % NTAG_BLOCK_SIZE) + length;
+    if(readLength<NTAG_BLOCK_SIZE)
+    {
+        readLength=NTAG_BLOCK_SIZE;
+    }
+    if(!readBlock(bt, byteAddress/NTAG_BLOCK_SIZE, readbuffer, readLength))
+    {
+        return false;
+    }
+    readLength-=byteAddress % NTAG_BLOCK_SIZE;
+    memcpy(wptr,readbuffer + (byteAddress % NTAG_BLOCK_SIZE), readLength);
+    wptr+=readLength;
+    for(byte i=(byteAddress/NTAG_BLOCK_SIZE)+1;wptr<pdata+length;i++)
+    {
+        readLength=(pdata+length-wptr > NTAG_BLOCK_SIZE ? NTAG_BLOCK_SIZE : pdata+length-wptr);
+        if(!readBlockTwoByteAddress(i, wptr, readLength))
+        {
+            return false;
+        }
+        wptr+=readLength;
+    }
+    return true;
+}
+
 bool Ntag::readBlock(BLOCK_TYPE bt, byte memBlockAddress, byte *p_data, byte data_size)
 {
     if(data_size>NTAG_BLOCK_SIZE || !writeBlockAddress(bt, memBlockAddress)){
@@ -261,6 +344,31 @@ bool Ntag::readBlock(BLOCK_TYPE bt, byte memBlockAddress, byte *p_data, byte dat
         return false;
     }
     if(HWire.requestFrom(_i2c_address,data_size)!=data_size){
+        return false;
+    }
+    byte i=0;
+    while(HWire.available())
+    {
+        p_data[i++] = HWire.read();
+    }
+    return i==data_size;
+}
+
+bool Ntag::readBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data, byte data_size)
+{   
+    HWire.beginTransmission(_i2c_address);
+    HWire.write(highByte(memBlockAddress));
+    HWire.write(lowByte(memBlockAddress));
+
+    if(data_size>NTAG_BLOCK_SIZE){
+        return false;
+    }
+    if(!end_transmission()){
+        return false;
+    }
+
+
+    if(HWire.requestFrom(_i2c_address, data_size)!=data_size){
         return false;
     }
     byte i=0;
@@ -300,6 +408,33 @@ bool Ntag::writeBlock(BLOCK_TYPE bt, byte memBlockAddress, byte *p_data)
         delayMicroseconds(500);//0.4 ms (SRAM - Pass-through mode) including all overhead
         break;
     }
+    return true;
+}
+
+bool Ntag::writeBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data, byte *data_size)
+{
+
+    if (data_size != NTAG_BLOCK_SIZE) {
+        return false
+    }
+
+
+    HWire.beginTransmission(_i2c_address);
+    HWire.write(highByte(memBlockAddress));
+    HWire.write(lowByte(memBlockAddress));
+
+
+    for (int i=0; i<NTAG_BLOCK_SIZE; i++)
+    {
+	HWire.write(p_data[i]);
+    }
+    
+    if(!end_transmission()){
+        return false;
+    }
+
+    delay(5); //16 bytes (one block) written in 4.5 ms (EEPROM)
+
     return true;
 }
 

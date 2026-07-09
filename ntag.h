@@ -20,7 +20,7 @@ public:
         I2C_CLOCK_STR,
         NS_REG
     }REGISTER_NR;
-    Ntag(DEVICE_TYPE dt, byte fd_pin, byte vout_pin, byte i2c_address = DEFAULT_I2C_ADDRESS);
+    Ntag(DEVICE_TYPE dt, byte i2c_address = DEFAULT_I2C_ADDRESS);
     void detectI2cDevices();//Comes in handy when you accidentally changed the I²C address of the NTAG.
     bool begin();
     bool getUid(byte *uid, unsigned int uidLength);
@@ -32,6 +32,7 @@ public:
     bool setFd_ReaderHandshake();
     //Address=address of the byte, not address of the 16byte block
     bool readEeprom(word address, byte* pdata, byte length);//starts at address 0
+    bool readEepromMod(word address, byte* pdata, byte length);//starts at address 0
     //Address=address of the byte, not address of the 16byte block
     bool writeEeprom(word address, byte* pdata, byte length);//starts at address 0
     bool readSram(word address, byte* pdata, byte length);//starts at address 0
@@ -47,9 +48,9 @@ private:
         REGISTER=0x4,//Settings registers
         SRAM=0x8
     }BLOCK_TYPE;
-    static const byte UID_LENGTH=7;
-    static const byte DEFAULT_I2C_ADDRESS=0x55;
-    static const byte NTAG_BLOCK_SIZE=16;
+    static const byte UID_LENGTH=2;
+    static const byte DEFAULT_I2C_ADDRESS=0x54;
+    static const byte NTAG_BLOCK_SIZE=32;
     static const word EEPROM_BASE_ADDR=(0x1<<4);
     static const word SRAM_BASE_ADDR=(0xF8<<4);
     //Address=address of the byte, not address of the 16byte block
@@ -57,6 +58,7 @@ private:
     //Address=address of the byte, not address of the 16byte block
     bool read(BLOCK_TYPE bt, word byteAddress, byte* pdata,  byte length);
     bool readBlock(BLOCK_TYPE bt, byte memBlockAddress, byte *p_data, byte data_size);
+    bool readBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data, byte data_size);
     bool writeBlock(BLOCK_TYPE bt, byte memBlockAddress, byte *p_data);
     bool writeBlockAddress(BLOCK_TYPE dt, byte addr);
     bool end_transmission(void);
@@ -64,8 +66,6 @@ private:
     bool setLastNdefBlock(byte memBlockAddress);
     byte _i2c_address;
     DEVICE_TYPE _dt;
-    byte _fd_pin;
-    byte _vout_pin;
     byte _lastMemBlockWritten;
     byte _mirrorBaseBlockNr;
     Bounce _debouncer;
