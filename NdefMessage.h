@@ -5,6 +5,8 @@
 #include <NdefRecord.h>
 
 #define MAX_NDEF_RECORDS 4
+#define KNOWN_TYPE_HTTPS 0x04
+#define KNOWN_TYPE_HTTP  0x03
 
 class NdefMessage
 {
@@ -24,6 +26,7 @@ class NdefMessage
         void addTextRecord(String text);
         void addTextRecord(String text, String encoding);
         void addUriRecord(String uri);
+        void addUrlRecord(byte knownTypeUrlPrefix, String url);
         void addUnknownRecord(byte *payload, int payloadLength);
         void addEmptyRecord();
 

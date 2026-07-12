@@ -66,16 +66,19 @@ bool Ntag::getUid(byte *uid, unsigned int uidLength)
 
 bool Ntag::getCapabilityContainer(byte* container)
 {
-    if(!container)
+    if (!container)
     {
+        Serial.println("getCapabilityContainer: no container");
         return false;
     }
-    byte data[16];
-    if(!readBlock(CONFIG, 0,data,16))
+
+    // Type 5 CC starts in block 0
+    if (!readBlockTwoByteAddress(0, container, 4))
     {
+        Serial.println("getCapabilityContainer: failed at container read");
         return false;
     }
-    memcpy(container, data+12, 4);
+
     return true;
 }
 
@@ -148,7 +151,7 @@ bool Ntag::readEeprom(word address, byte *pdata, byte length)
 }
 
 bool Ntag::readEepromMod(uint16_t address, byte *pdata, byte length)
-{   
+{
     return readMod(address, pdata, length);
 }
 
@@ -158,13 +161,7 @@ bool Ntag::writeEeprom(word address, byte *pdata, byte length)
 }
 
 bool Ntag::writeEepromMod(uint16_t address, byte *pdata, byte length)
-{   
-    Serial.println("writing to" + address);
-    for (size_t i = 0; i < sizeof(pdata); i++) {
-        if (pdata[i] < 16) Serial.print('0');
-        Serial.print(pdata[i], HEX);
-        Serial.print(' ');
-        }
+{
     Serial.println();
     return writeMod(address, pdata, length);
 }
@@ -239,14 +236,14 @@ bool Ntag::writeMod(uint16_t byteAddress, byte* pdata, byte length)
         //be read.
         Serial.println("not hitting block start in write");
         Serial.println("reading at address 0x" + String(blockNr*4));
-        if(!readBlockTwoByteAddress(blockNr*4, readbuffer, NTAG_BLOCK_SIZE))
+        if(!readBlockTwoByteAddress(blockNr, readbuffer, NTAG_BLOCK_SIZE))
         {
             return false;
         }
         writeLength=NTAG_BLOCK_SIZE - (byteAddress % NTAG_BLOCK_SIZE);
 
         memcpy((void*)(readbuffer + (byteAddress % NTAG_BLOCK_SIZE)), pdata, writeLength);
-        if(!writeBlockTwoByteAddress(blockNr*4, readbuffer))
+        if(!writeBlockTwoByteAddress(blockNr, readbuffer))
         {
             return false;
         }
@@ -259,14 +256,13 @@ bool Ntag::writeMod(uint16_t byteAddress, byte* pdata, byte length)
     {
         writeLength=(pdata+length-wptr > NTAG_BLOCK_SIZE ? NTAG_BLOCK_SIZE : pdata+length-wptr);
         if(writeLength!=NTAG_BLOCK_SIZE){
-            if(!readBlockTwoByteAddress(blockNr*4, readbuffer, NTAG_BLOCK_SIZE))
+            if(!readBlockTwoByteAddress(blockNr, readbuffer, NTAG_BLOCK_SIZE))
             {
                 return false;
             }
             memcpy(readbuffer, wptr, writeLength);
         }
-
-        if(!writeBlockTwoByteAddress(blockNr*4, writeLength==NTAG_BLOCK_SIZE ? wptr : readbuffer))
+        if(!writeBlockTwoByteAddress(blockNr, writeLength==NTAG_BLOCK_SIZE ? wptr : readbuffer))
         {
             return false;
         }
@@ -315,60 +311,65 @@ bool Ntag::read(BLOCK_TYPE bt, word byteAddress, byte* pdata,  byte length)
     return true;
 }
 
-bool Ntag::readMod(uint16_t byteAddress, byte* pdata,  byte length)
+bool Ntag::readMod(uint16_t byteAddress, byte* pdata, byte length)
 {
     byte readbuffer[NTAG_BLOCK_SIZE];
     byte readLength;
-    byte* wptr=pdata;
+    byte* wptr = pdata;
 
-    readLength=length;
+    // make offset explicit
+    byte offset  = byteAddress % NTAG_BLOCK_SIZE;
+    byte blockNr = byteAddress / NTAG_BLOCK_SIZE;
 
-    byte blockNr=byteAddress/NTAG_BLOCK_SIZE;
-    
-    Serial.println("readMod: reading at address:" + String(blockNr*4));
-    if(!readBlockTwoByteAddress(blockNr*4, readbuffer, NTAG_BLOCK_SIZE))
-    {   
-        Serial.println("readMod: failed to read");
-        Serial.println("readMod: readlength " + String(readLength));
-        Serial.println("readMod: failed to read");
+/*     Serial.println("readMod: byteAddress = " + String(byteAddress));
+    Serial.println("readMod: blockNr     = " + String(blockNr));
+    Serial.println("readMod: offset      = " + String(offset));
+    Serial.println("readMod: length      = " + String(length)); */
+
+    // always read the first block/page containing the byte address
+    if (!readBlockTwoByteAddress(blockNr, readbuffer, NTAG_BLOCK_SIZE))
+    {
+        Serial.println("readMod: failed first block read");
         return false;
     }
 
-    readLength-= byteAddress % NTAG_BLOCK_SIZE;
-    Serial.println("readMod: new readlength after 1st read " + String(readLength));
-    
-    memcpy(wptr,readbuffer + (byteAddress % NTAG_BLOCK_SIZE), readLength);
-    
-    wptr+=readLength;
-    
-    /*
-    Serial.println("readMod: reading at address:" + String((blockNr + 1)*4));
-    Serial.println("readMod: wptr:");
-    for (size_t i = 0; i < sizeof(wptr); i++) {
-        if (wptr[i] < 16) Serial.print('0');
-        Serial.print(wptr[i], HEX);
-        Serial.print(' ');
-        }
-
-    Serial.println("readMod: length: " + String(length));
-    */
-
-    for(byte i=(blockNr + 1)*4;wptr<pdata+length;i++)
+    // number of useful bytes from first block only
+    readLength = NTAG_BLOCK_SIZE - offset;
+    if (readLength > length)
     {
-        readLength=(pdata+length-wptr > NTAG_BLOCK_SIZE ? NTAG_BLOCK_SIZE : pdata+length-wptr);
-        if(!readBlockTwoByteAddress(i, wptr, readLength))
-        {
-            /*
-            Serial.println("readMod: failed in for read");
-            Serial.println("readMod: i: " + String(i));
-            Serial.println("readMod: readLength: " + String(readLength));
-            Serial.println("readMod: readLength: " + String(pdata+length-wptr));
-            */
+        readLength = length;
+    }
 
+    Serial.println("readMod: first copy length = " + String(readLength));
+
+    memcpy(wptr, readbuffer + offset, readLength);
+
+    // advance write pointer immediately after first copy
+    wptr += readLength;
+
+    Serial.println("readMod: bytes copied after first block = " + String(wptr - pdata));
+
+    // loop continues with next block only if bytes remain
+    for (byte i = blockNr + 1; wptr < pdata + length; i++)
+    {
+        // explicit remaining byte count
+        byte remaining = (pdata + length) - wptr;
+        readLength = (remaining > NTAG_BLOCK_SIZE) ? NTAG_BLOCK_SIZE : remaining;
+
+        /*
+        Serial.println("readMod: next block = " + String(i));
+        Serial.println("readMod: remaining  = " + String(remaining));
+        Serial.println("readMod: readLength = " + String(readLength));
+        */
+        if (!readBlockTwoByteAddress(i, wptr, readLength))
+        {
+            Serial.println("readMod: failed in loop at block " + String(i));
             return false;
         }
-        wptr+=readLength;
+
+        wptr += readLength;
     }
+
     return true;
 }
 
@@ -392,11 +393,12 @@ bool Ntag::readBlock(BLOCK_TYPE bt, byte memBlockAddress, byte *p_data, byte dat
 }
 
 bool Ntag::readBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data, byte data_size)
-{   
+{
     HWire.beginTransmission(_i2c_address);
     HWire.write(highByte(memBlockAddress));
     HWire.write(lowByte(memBlockAddress));
 
+    Serial.println("reading at add: " + String(memBlockAddress));
 
     if(!end_transmission()){
         return false;
@@ -447,17 +449,18 @@ bool Ntag::writeBlock(BLOCK_TYPE bt, byte memBlockAddress, byte *p_data)
 
 bool Ntag::writeBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data)
 {
-
+    // Serial.println("writeBlockTwoByteAddress: address " + String(memBlockAddress));
     HWire.beginTransmission(_i2c_address);
     HWire.write(highByte(memBlockAddress));
     HWire.write(lowByte(memBlockAddress));
-
-
+    // Serial.println("writeBlockTwoByteAddress: address high byte " + String(highByte(memBlockAddress)));
+    // Serial.println("writeBlockTwoByteAddress: address low byte " + String(lowByte(memBlockAddress)));
     for (int i=0; i<NTAG_BLOCK_SIZE; i++)
     {
+    // Serial.println("writeBlockTwoByteAddress: data " + String(p_data[i]));
 	HWire.write(p_data[i]);
     }
-    
+
     if(!end_transmission()){
         return false;
     }

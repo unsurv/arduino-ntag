@@ -10,6 +10,7 @@ public:
     NtagEepromAdapter(Ntag* ntag);
     bool begin();
     bool write(NdefMessage& message, unsigned int uiTimeout=0);
+    bool writeMod(NdefMessage& message, unsigned int uiTimeout=0);
     NfcTag read(unsigned int uiTimeOut=0);
     bool clean();
     bool erase();

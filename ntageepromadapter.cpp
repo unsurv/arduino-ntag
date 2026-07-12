@@ -1,6 +1,7 @@
 //[BSD License](https://github.com/don/Ndef/blob/master/LICENSE.txt) (c) 2013-2014, Don Coleman
 
 #include "ntageepromadapter.h"
+#include "Ndef.h"
 
 NtagEepromAdapter::NtagEepromAdapter(Ntag* ntag)
 {
@@ -77,6 +78,59 @@ bool NtagEepromAdapter::write(NdefMessage& m, unsigned int uiTimeout){
     //    }
 }
 
+bool NtagEepromAdapter::writeMod(NdefMessage& m, unsigned int uiTimeout){
+
+    if (isUnformatted())
+    {
+        Serial.println(F("WARNING: Tag is not formatted."));
+        return false;
+    }
+
+
+    messageLength  = m.getEncodedSize();
+    ndefStartIndex = 6;
+    calculateBufferSize();
+
+    tagCapacity = 2048;
+
+    if(bufferSize>tagCapacity) {
+
+        Serial.print(F("Encoded Message length exceeded tag Capacity "));Serial.println(tagCapacity);
+        return false;
+    }
+
+    uint8_t encoded[bufferSize];
+    Serial.println("writeMod: messageLength " + String(messageLength));
+    // Set message size.
+    encoded[0] = 0xE1;
+    encoded[1] = 0x40;
+    encoded[2] = 0x80;
+    encoded[3] = 0x01;
+    encoded[4] = 0x03;
+    encoded[5] = messageLength;
+
+    
+    m.encode(encoded+ndefStartIndex);
+    // this is always at least 1 byte copy because of terminator.
+    memset(encoded+ndefStartIndex+messageLength,0,bufferSize-ndefStartIndex-messageLength);
+    encoded[ndefStartIndex+messageLength] = 0xFE; // terminator
+
+    Serial.print(F("messageLength "));Serial.println(messageLength);
+    PrintHex(encoded,bufferSize);
+
+    Serial.println("Writing to eeprom");
+    
+    _ntag->writeEepromMod(0,encoded,bufferSize);
+    _ntag->setLastNdefBlock();
+    _ntag->releaseI2c();
+    
+
+    //    for(int i=0;i<sizeof(buffer);i++){
+    //        Serial.print(buffer[i], HEX);Serial.print(" ");
+    //        if((i+1)%8==0)Serial.println();
+    //    }
+}
+
 NfcTag NtagEepromAdapter::read(unsigned int uiTimeOut)
 {
     if (isUnformatted())
@@ -144,9 +198,9 @@ bool NtagEepromAdapter::erase()
 
 bool NtagEepromAdapter::isUnformatted()
 {
-    const byte PAGE_4 = 0;//page 4 is base address of EEPROM from I²C perspective
+    const byte PAGE_4 = 0;
     byte data[NTAG_PAGE_SIZE];
-    bool success = _ntag->readEeprom(PAGE_4, data, NTAG_PAGE_SIZE);
+    bool success = _ntag->readEepromMod(PAGE_4, data, NTAG_PAGE_SIZE);
     if (success)
     {
         return (data[0] == 0xFF && data[1] == 0xFF && data[2] == 0xFF && data[3] == 0xFF);
@@ -163,17 +217,17 @@ bool NtagEepromAdapter::readCapabilityContainer()
 {
     byte data[4];
     if (_ntag->getCapabilityContainer(data))
-    {
-        //http://apps4android.org/nfc-specifications/NFCForum-TS-Type-2-Tag_1.1.pdf
+    {   
+        Serial.println("readCapabilityContainer: test");
+
+        // http://apps4android.org/nfc-specifications/NFCForum-TS-Type-2-Tag_1.1.pdf
         if(data[0]!=0xE1)
         {
-            return false;   //magic number
+            Serial.println("readCapabilityContainer: failed at data[0]==0xE1");
+            return false;   // not magic number
         }
-        //NT3H1101 return 0x6D for data[2], which leads to 872 databytes, not 888.
-        tagCapacity = data[2] * 8;
-#ifdef MIFARE_ULTRALIGHT_DEBUG
-        Serial.print(F("Tag capacity "));Serial.print(tagCapacity);Serial.println(F(" bytes"));
-#endif
+        // NTAG 5 link offers 2048 bits of user memory.
+        tagCapacity = 2048;
 
         // TODO future versions should get lock information
     }
@@ -192,6 +246,8 @@ void NtagEepromAdapter::calculateBufferSize()
         // buffer must be an increment of page size
         bufferSize = ((bufferSize / NTAG_PAGE_SIZE) + 1) * NTAG_PAGE_SIZE;
     }
+
+    Serial.println("calculateBufferSize: bufferSize " + String(bufferSize));
 }
 
 // read enough of the message to find the ndef message length
@@ -200,7 +256,7 @@ void NtagEepromAdapter::findNdefMessage()
     byte data[16]; // 4 pages
 
     // the nxp read command reads 4 pages
-    if (_ntag->readEeprom(0,data,16))
+    if (_ntag->readEepromMod(0,data,16))
     {
         if (data[0] == 0x03)
         {
@@ -220,5 +276,3 @@ void NtagEepromAdapter::findNdefMessage()
     Serial.print(F("ndefStartIndex "));Serial.println(ndefStartIndex);
     #endif
 }
-
-

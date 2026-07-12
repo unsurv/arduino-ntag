@@ -246,6 +246,30 @@ void NdefMessage::addUriRecord(String uri)
     delete(r);
 }
 
+void NdefMessage::addUrlRecord(byte knownTypeUrlPrefix, String url)
+{
+    NdefRecord* r = new NdefRecord();
+    r->setTnf(TNF_WELL_KNOWN);
+
+    uint8_t RTD_URI[1] = { 0x55 }; // TODO this should be a constant or preprocessor
+    r->setType(RTD_URI, sizeof(RTD_URI));
+
+    // X is a placeholder for identifier code
+    String payloadString = "X" + url;
+
+    byte payload[payloadString.length() + 1];
+    payloadString.getBytes(payload, sizeof(payload));
+
+
+    // add identifier code 0x0, meaning no prefix substitution
+    payload[0] = knownTypeUrlPrefix;
+
+    r->setPayload(payload, payloadString.length());
+
+    addRecord(*r);
+    delete(r);
+}
+
 void NdefMessage::addEmptyRecord()
 {
     NdefRecord* r = new NdefRecord();
