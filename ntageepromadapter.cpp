@@ -38,7 +38,7 @@ bool NtagEepromAdapter::write(NdefMessage& m, unsigned int uiTimeout){
     calculateBufferSize();
 
     if(bufferSize>tagCapacity) {
-#ifdef MIFARE_ULTRALIGHT_DEBUG
+#ifdef NFC_SENSE_DEBUG
         Serial.print(F("Encoded Message length exceeded tag Capacity "));Serial.println(tagCapacity);
 #endif
         return false;
@@ -63,7 +63,7 @@ bool NtagEepromAdapter::write(NdefMessage& m, unsigned int uiTimeout){
     memset(encoded+ndefStartIndex+messageLength,0,bufferSize-ndefStartIndex-messageLength);
     encoded[ndefStartIndex+messageLength] = 0xFE; // terminator
 
-#ifdef MIFARE_ULTRALIGHT_DEBUG
+#ifdef NFC_SENSE_DEBUG
     Serial.print(F("messageLength "));Serial.println(messageLength);
     Serial.print(F("Tag Capacity "));Serial.println(tagCapacity);
     nfc->PrintHex(encoded,bufferSize);
@@ -100,13 +100,16 @@ bool NtagEepromAdapter::writeMod(NdefMessage& m, unsigned int uiTimeout){
     }
 
     uint8_t encoded[bufferSize];
+#ifdef NFC_SENSE_DEBUG
     Serial.println("writeMod: messageLength " + String(messageLength));
-    // Set message size.
+#endif
+    // static NDEF part
     encoded[0] = 0xE1;
     encoded[1] = 0x40;
     encoded[2] = 0x80;
     encoded[3] = 0x01;
     encoded[4] = 0x03;
+    // Set message size.
     encoded[5] = messageLength;
 
     
@@ -115,11 +118,11 @@ bool NtagEepromAdapter::writeMod(NdefMessage& m, unsigned int uiTimeout){
     memset(encoded+ndefStartIndex+messageLength,0,bufferSize-ndefStartIndex-messageLength);
     encoded[ndefStartIndex+messageLength] = 0xFE; // terminator
 
+#ifdef NFC_SENSE_DEBUG
     Serial.print(F("messageLength "));Serial.println(messageLength);
-    PrintHex(encoded,bufferSize);
-
     Serial.println("Writing to eeprom");
-    
+    PrintHex(encoded,bufferSize);
+#endif
     _ntag->writeEepromMod(0,encoded,bufferSize);
     _ntag->setLastNdefBlock();
     _ntag->releaseI2c();
@@ -177,11 +180,11 @@ bool NtagEepromAdapter::clean()
     memset(data,0x00,sizeof(data));
 
     for (int i = 0; i < blocks; i++) {
-        #ifdef MIFARE_ULTRALIGHT_DEBUG
+        #ifdef NFC_SENSE_DEBUG
         Serial.print(F("Wrote page "));Serial.print(i);Serial.print(F(" - "));
         nfc->PrintHex(data, ULTRALIGHT_PAGE_SIZE);
         #endif
-        if (!_ntag->writeEeprom(i,data,NTAG_BLOCK_SIZE)) {
+        if (!_ntag->writeEepromMod(i,data,NTAG_BLOCK_SIZE)) {
             return false;
         }
     }
@@ -192,7 +195,7 @@ bool NtagEepromAdapter::erase()
 {
     NdefMessage message = NdefMessage();
     message.addEmptyRecord();
-    return write(message);
+    return writeMod(message);
 }
 
 
@@ -247,7 +250,7 @@ void NtagEepromAdapter::calculateBufferSize()
         bufferSize = ((bufferSize / NTAG_PAGE_SIZE) + 1) * NTAG_PAGE_SIZE;
     }
 
-    Serial.println("calculateBufferSize: bufferSize " + String(bufferSize));
+    // Serial.println("calculateBufferSize: bufferSize " + String(bufferSize));
 }
 
 // read enough of the message to find the ndef message length
@@ -271,7 +274,7 @@ void NtagEepromAdapter::findNdefMessage()
         }
     }
 
-    #ifdef MIFARE_ULTRALIGHT_DEBUG
+    #ifdef NFC_SENSE_DEBUG
     Serial.print(F("messageLength "));Serial.println(messageLength);
     Serial.print(F("ndefStartIndex "));Serial.println(ndefStartIndex);
     #endif

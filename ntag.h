@@ -41,6 +41,8 @@ public:
     bool readRegister(REGISTER_NR regAddr, byte &value);
     bool writeRegister(REGISTER_NR regAddr, byte mask, byte regdat);
     bool setLastNdefBlock();
+    bool lockEepromToI2c();
+    bool unlockEeprom();
     void releaseI2c();
 private:
     typedef enum{

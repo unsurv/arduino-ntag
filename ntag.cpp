@@ -7,7 +7,7 @@ HardWire HWire(1, I2C_REMAP);// | I2C_BUS_RESET); // I2c1
 #else
 #define HWire Wire
 #endif
-
+// #define NFC_SENSE_DEBUG
 
 Ntag::Ntag(DEVICE_TYPE dt, byte i2c_address):
     _dt(dt),
@@ -162,7 +162,6 @@ bool Ntag::writeEeprom(word address, byte *pdata, byte length)
 
 bool Ntag::writeEepromMod(uint16_t address, byte *pdata, byte length)
 {
-    Serial.println();
     return writeMod(address, pdata, length);
 }
 
@@ -234,8 +233,10 @@ bool Ntag::writeMod(uint16_t byteAddress, byte* pdata, byte length)
     {
         //start address doesn't point to start of block, so the bytes in this block that precede the address range must
         //be read.
+#ifdef NFC_SENSE_DEBUG
         Serial.println("not hitting block start in write");
         Serial.println("reading at address 0x" + String(blockNr*4));
+#endif
         if(!readBlockTwoByteAddress(blockNr, readbuffer, NTAG_BLOCK_SIZE))
         {
             return false;
@@ -247,7 +248,9 @@ bool Ntag::writeMod(uint16_t byteAddress, byte* pdata, byte length)
         {
             return false;
         }
+#ifdef NFC_SENSE_DEBUG
         Serial.println("writeMod: writeLength: " + String(writeLength));
+#endif
         wptr+=writeLength;
         blockNr++;
     }
@@ -317,15 +320,15 @@ bool Ntag::readMod(uint16_t byteAddress, byte* pdata, byte length)
     byte readLength;
     byte* wptr = pdata;
 
-    // make offset explicit
     byte offset  = byteAddress % NTAG_BLOCK_SIZE;
     byte blockNr = byteAddress / NTAG_BLOCK_SIZE;
 
-/*     Serial.println("readMod: byteAddress = " + String(byteAddress));
+#ifdef NFC_SENSE_DEBUG
+    Serial.println("readMod: byteAddress = " + String(byteAddress));
     Serial.println("readMod: blockNr     = " + String(blockNr));
     Serial.println("readMod: offset      = " + String(offset));
-    Serial.println("readMod: length      = " + String(length)); */
-
+    Serial.println("readMod: length      = " + String(length));
+#endif
     // always read the first block/page containing the byte address
     if (!readBlockTwoByteAddress(blockNr, readbuffer, NTAG_BLOCK_SIZE))
     {
@@ -339,16 +342,16 @@ bool Ntag::readMod(uint16_t byteAddress, byte* pdata, byte length)
     {
         readLength = length;
     }
-
+#ifdef NFC_SENSE_DEBUG
     Serial.println("readMod: first copy length = " + String(readLength));
-
+#endif
     memcpy(wptr, readbuffer + offset, readLength);
 
     // advance write pointer immediately after first copy
     wptr += readLength;
-
+#ifdef NFC_SENSE_DEBUG
     Serial.println("readMod: bytes copied after first block = " + String(wptr - pdata));
-
+#endif
     // loop continues with next block only if bytes remain
     for (byte i = blockNr + 1; wptr < pdata + length; i++)
     {
@@ -356,11 +359,11 @@ bool Ntag::readMod(uint16_t byteAddress, byte* pdata, byte length)
         byte remaining = (pdata + length) - wptr;
         readLength = (remaining > NTAG_BLOCK_SIZE) ? NTAG_BLOCK_SIZE : remaining;
 
-        /*
+#ifdef NFC_SENSE_DEBUG
         Serial.println("readMod: next block = " + String(i));
         Serial.println("readMod: remaining  = " + String(remaining));
         Serial.println("readMod: readLength = " + String(readLength));
-        */
+#endif
         if (!readBlockTwoByteAddress(i, wptr, readLength))
         {
             Serial.println("readMod: failed in loop at block " + String(i));
@@ -397,9 +400,9 @@ bool Ntag::readBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data, byte 
     HWire.beginTransmission(_i2c_address);
     HWire.write(highByte(memBlockAddress));
     HWire.write(lowByte(memBlockAddress));
-
+#ifdef NFC_SENSE_DEBUG
     Serial.println("reading at add: " + String(memBlockAddress));
-
+#endif
     if(!end_transmission()){
         return false;
     }
@@ -449,15 +452,17 @@ bool Ntag::writeBlock(BLOCK_TYPE bt, byte memBlockAddress, byte *p_data)
 
 bool Ntag::writeBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data)
 {
-    // Serial.println("writeBlockTwoByteAddress: address " + String(memBlockAddress));
+
     HWire.beginTransmission(_i2c_address);
     HWire.write(highByte(memBlockAddress));
     HWire.write(lowByte(memBlockAddress));
-    // Serial.println("writeBlockTwoByteAddress: address high byte " + String(highByte(memBlockAddress)));
-    // Serial.println("writeBlockTwoByteAddress: address low byte " + String(lowByte(memBlockAddress)));
+#ifdef NFC_SENSE_DEBUG
+    Serial.println("writeBlockTwoByteAddress: address " + String(memBlockAddress));
+    Serial.println("writeBlockTwoByteAddress: address high byte " + String(highByte(memBlockAddress)));
+    Serial.println("writeBlockTwoByteAddress: address low byte " + String(lowByte(memBlockAddress)));
+#endif
     for (int i=0; i<NTAG_BLOCK_SIZE; i++)
     {
-    // Serial.println("writeBlockTwoByteAddress: data " + String(p_data[i]));
 	HWire.write(p_data[i]);
     }
 
@@ -552,4 +557,14 @@ bool Ntag::isAddressValid(BLOCK_TYPE type, byte blocknr){
         return false;
     }
     return true;
+}
+
+bool Ntag::lockEepromToI2c(){
+    byte lockBytes[4] = {0x00, 0x02, 0x00, 0x00};
+    return writeBlockTwoByteAddress(0x10A0, lockBytes);
+}
+
+bool Ntag::unlockEeprom(){
+    byte unlockBytes[4] = {0x00, 0x00, 0x00, 0x00};
+    return writeBlockTwoByteAddress(0x10A0, unlockBytes);
 }
