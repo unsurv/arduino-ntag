@@ -122,6 +122,10 @@ bool NtagEepromAdapter::writeMod(NdefMessage& m, unsigned int uiTimeout){
     Serial.print(F("messageLength "));Serial.println(messageLength);
     Serial.println("Writing to eeprom");
     PrintHex(encoded,bufferSize);
+
+    for(int i=0;i<sizeof(buffer);i++){
+        Serial.print(buffer[i], HEX);Serial.print(" ");
+        if((i+1)%8==0)Serial.println();
 #endif
     _ntag->writeEepromMod(0,encoded,bufferSize);
     _ntag->setLastNdefBlock();
@@ -209,8 +213,11 @@ bool NtagEepromAdapter::isUnformatted()
         return (data[0] == 0xFF && data[1] == 0xFF && data[2] == 0xFF && data[3] == 0xFF);
     }
     else
-    {
-        Serial.print(F("Error. Failed read page 4"));
+    {   
+        #ifdef NFC_SENSE_DEBUG
+            Serial.print(F("Error. Failed read page 4"));
+        #endif
+        
         return false;
     }
 }

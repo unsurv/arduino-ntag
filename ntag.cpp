@@ -53,16 +53,42 @@ byte Ntag::getUidLength()
     return UID_LENGTH;
 }
 
+byte Ntag::getHarvestingLength()
+{
+    return EH_CONFIG_LENGTH;
+}
+
 bool Ntag::getUid(byte *uid, unsigned int uidLength)
 {
     byte data[UID_LENGTH];
     if(!readBlockTwoByteAddress(0x1009, data, UID_LENGTH))
-    {
+    {   
+        Serial.println("uid get failed");
         return false;
     }
     memcpy(uid, data, UID_LENGTH < uidLength ? UID_LENGTH : uidLength);
     return true;
 }
+
+bool Ntag::getEnergyHarvestingStatus(byte *eHarvest, unsigned int ehconfigLength)
+{
+    byte data[EH_CONFIG_LENGTH];
+    if(!readBlockTwoByteAddress(0x103D, data, EH_CONFIG_LENGTH))
+    {
+        return false;
+    }
+    memcpy(eHarvest, data, EH_CONFIG_LENGTH < ehconfigLength ? EH_CONFIG_LENGTH : ehconfigLength);
+    
+    // check bit 0 for energy harvest enable
+    if (data[0] & 0x01) {
+        return true;
+    } else {
+        return false;
+    }
+
+}
+
+
 
 bool Ntag::getCapabilityContainer(byte* container)
 {
@@ -331,8 +357,11 @@ bool Ntag::readMod(uint16_t byteAddress, byte* pdata, byte length)
 #endif
     // always read the first block/page containing the byte address
     if (!readBlockTwoByteAddress(blockNr, readbuffer, NTAG_BLOCK_SIZE))
-    {
-        Serial.println("readMod: failed first block read");
+    {   
+        #ifdef NFC_SENSE_DEBUG
+            Serial.println("readMod: failed first block read");
+        #endif
+        
         return false;
     }
 
@@ -365,8 +394,11 @@ bool Ntag::readMod(uint16_t byteAddress, byte* pdata, byte length)
         Serial.println("readMod: readLength = " + String(readLength));
 #endif
         if (!readBlockTwoByteAddress(i, wptr, readLength))
-        {
-            Serial.println("readMod: failed in loop at block " + String(i));
+        {   
+            #ifdef NFC_SENSE_DEBUG
+                Serial.println("readMod: failed in loop at block " + String(i));
+            #endif
+            
             return false;
         }
 
@@ -404,10 +436,17 @@ bool Ntag::readBlockTwoByteAddress(uint16_t memBlockAddress, byte *p_data, byte 
     Serial.println("reading at add: " + String(memBlockAddress));
 #endif
     if(!end_transmission()){
+        #ifdef NFC_SENSE_DEBUG
+            Serial.println("bus busy");
+        #endif
+
         return false;
     }
 
     if(HWire.requestFrom(_i2c_address, data_size)!=data_size){
+        #ifdef NFC_SENSE_DEBUG
+            Serial.println("!= data size");        
+        #endif
         return false;
     }
     byte i=0;

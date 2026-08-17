@@ -24,6 +24,8 @@ public:
     void detectI2cDevices();//Comes in handy when you accidentally changed the I²C address of the NTAG.
     bool begin();
     bool getUid(byte *uid, unsigned int uidLength);
+    byte getHarvestingLength();
+    bool getEnergyHarvestingStatus(byte *eHarvest, unsigned int ehconfigLength);
     bool getCapabilityContainer(byte* container);
     byte getUidLength();
     bool isRfBusy();
@@ -52,6 +54,7 @@ private:
         SRAM=0x8
     }BLOCK_TYPE;
     static const byte UID_LENGTH=2;
+    static const byte EH_CONFIG_LENGTH=1;
     static const byte DEFAULT_I2C_ADDRESS=0x54;
     static const byte NTAG_BLOCK_SIZE=4;
     static const word EEPROM_BASE_ADDR=(0x1<<4);
