@@ -194,8 +194,8 @@ bool Ntag::writeEepromMod(uint16_t address, byte *pdata, byte length)
 
 void Ntag::releaseI2c()
 {
-    //reset I2C_LOCKED bit
-    writeRegister(NS_REG,0x40,0);
+    //reset I2C_LOCKED bit at byte 2; bit 3; address 0x10A9
+    writeRegisterMod(0x10A9, 0x02, 0x08, 0x08);
 }
 
 bool Ntag::write(BLOCK_TYPE bt, word byteAddress, byte* pdata, byte length)
@@ -532,6 +532,89 @@ bool Ntag::readRegister(REGISTER_NR regAddr, byte& value)
     return bRetVal;
 }
 
+bool Ntag::readRegisterMod(uint16_t blockAddress, byte regAddress, byte *registerData, byte dataSize)
+{
+    // Select the NTAG register block.
+    HWire.beginTransmission(_i2c_address);
+
+    HWire.write(highByte(blockAddress));     // BL_AD1
+    HWire.write(lowByte(blockAddress));   // BL_AD0
+    HWire.write(regAddress);
+
+
+    // START + SL_AD/W + BL_AD1 + BL_AD0 + STOP
+    //
+    uint8_t status = HWire.endTransmission(true);
+
+        if (status != 0) {
+#ifdef NFC_SENSE_DEBUG
+        Serial.print("NTAG read-register select failed, I2C status: ");
+        Serial.println(status);
+#endif
+        return false;
+    }
+
+    // --- Read phase: read selected register byte(s) ---
+    // Sends:
+    // START | SL_AD+R | DATA0 ... DATAN | NACK | STOP
+    uint8_t received = HWire.requestFrom(
+        (uint8_t)_i2c_address,
+        (uint8_t)dataSize,
+        (uint8_t)true
+    );
+
+    if (received != dataSize) {
+    
+    #ifdef NFC_SENSE_DEBUG
+        Serial.print("NTAG read-register expected ");
+        Serial.print(dataSize);
+        Serial.print(", received ");
+        Serial.println(received);
+    #endif
+        return false;
+    }
+
+    for (uint8_t i = 0; i < dataSize; ++i) {
+        if (!HWire.available()) {
+            return false;
+        }
+
+        registerData[i] = HWire.read();
+
+    }
+    return true;
+}
+
+bool Ntag::writeRegisterMod(uint16_t blockAddress,
+                            byte regAddress,
+                            byte mask,
+                            byte registerData)
+{
+    // Select the NTAG register block and register.
+    HWire.beginTransmission(_i2c_address);
+
+    HWire.write(highByte(blockAddress));  // BL_AD1: block address MSB
+    HWire.write(lowByte(blockAddress));   // BL_AD0: block address LSB
+    HWire.write(regAddress);              // REGA: register address
+    HWire.write(mask);                    // MASK: bits to modify
+    HWire.write(registerData);            // REGDATA: data to write
+
+    // Sends:
+    // START | SL_AD+W | BL_AD1 | BL_AD0 | REGA |
+    // MASK | REGDATA | STOP
+    uint8_t status = HWire.endTransmission(true);
+
+    if (status != 0) {
+#ifdef NFC_SENSE_DEBUG
+        Serial.print("NTAG write-register failed, I2C status: ");
+        Serial.println(status);
+#endif
+        return false;
+    }
+
+    return true;
+}
+
 bool Ntag::writeRegister(REGISTER_NR regAddr, byte mask, byte regdat)
 {
     if(regAddr>7 || !writeBlockAddress(REGISTER, 0xFE)){
@@ -606,4 +689,95 @@ bool Ntag::lockEepromToI2c(){
 bool Ntag::unlockEeprom(){
     byte unlockBytes[4] = {0x00, 0x00, 0x00, 0x00};
     return writeBlockTwoByteAddress(0x10A0, unlockBytes);
+}
+
+bool Ntag::disableNfc(){
+    byte regValue[4];
+
+    if(!readRegisterMod(0x10A1, 0, regValue, 2))
+    {   
+        Serial.println("NFC config get failed");
+        return false;
+    }
+
+
+    Serial.print("NFC Status is: ");
+    for(byte i=0;i<4;i++)
+        {
+            Serial.print(regValue[i]);
+            Serial.print(" ");
+        }
+    Serial.println();
+
+    writeRegisterMod(
+        0x10A1,  // BL_AD
+        0x00,    // REGA
+        0x20,    // MASK: modify only bit 5
+        0x20     // REGDATA: bit 5 = 1
+    );
+
+    byte regValue2[2];
+
+    if(!readRegisterMod(0x10A1, 0, regValue2, 2))
+    {   
+        Serial.println("NFC config get failed");
+        return false;
+    }
+
+
+    Serial.print("NFC Status is: ");
+    for(byte i=0;i<4;i++)
+        {
+            Serial.print(regValue2[i]);
+            Serial.print(" ");
+        }
+    Serial.println();
+    
+    return true;
+}
+
+bool Ntag::enableNfc(){
+    
+    byte regValue[4];
+
+    if(!readRegisterMod(0x10A1, 0, regValue, 2))
+    {   
+        Serial.println("NFC config get failed");
+        return false;
+    }
+
+
+    Serial.print("NFC Status is: ");
+    for(byte i=0;i<4;i++)
+        {
+            Serial.print(regValue[i], HEX);
+            Serial.print(" ");
+        }
+    Serial.println();
+
+    writeRegisterMod(
+        0x10A1,  // BL_AD
+        0x00,    // REGA
+        0x20,    // MASK: modify only bit 5
+        0x00     // REGDATA: bit 5 = 0
+    );
+
+    byte regValue2[2];
+
+    if(!readRegisterMod(0x10A1, 0, regValue2, 2))
+    {   
+        Serial.println("NFC config get failed");
+        return false;
+    }
+
+
+    Serial.print("NFC Status is: ");
+    for(byte i=0;i<4;i++)
+        {
+            Serial.print(regValue2[i]);
+            Serial.print(" ");
+        }
+    Serial.println();
+    
+    return true;
 }

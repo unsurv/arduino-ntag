@@ -41,11 +41,16 @@ public:
     bool readSram(word address, byte* pdata, byte length);//starts at address 0
     bool writeSram(word address, byte* pdata, byte length);//starts at address 0
     bool readRegister(REGISTER_NR regAddr, byte &value);
+    bool readRegisterMod(uint16_t blockAddress, byte regAddress, byte *registerData, byte dataSize);
+    bool writeRegisterMod(uint16_t blockAddress, byte regAddress, byte mask, byte registerData);
     bool writeRegister(REGISTER_NR regAddr, byte mask, byte regdat);
     bool setLastNdefBlock();
     bool lockEepromToI2c();
     bool unlockEeprom();
     void releaseI2c();
+    bool disableNfc();
+    bool disableNfcEeprom();
+    bool enableNfc();
 private:
     typedef enum{
         CONFIG=0x1,//BLOCK0 (putting this in a separate block type, because errors here can "brick" the device.)

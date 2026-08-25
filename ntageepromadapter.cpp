@@ -131,11 +131,6 @@ bool NtagEepromAdapter::writeMod(NdefMessage& m, unsigned int uiTimeout){
     _ntag->setLastNdefBlock();
     _ntag->releaseI2c();
     
-
-    //    for(int i=0;i<sizeof(buffer);i++){
-    //        Serial.print(buffer[i], HEX);Serial.print(" ");
-    //        if((i+1)%8==0)Serial.println();
-    //    }
 }
 
 NfcTag NtagEepromAdapter::read(unsigned int uiTimeOut)
@@ -173,7 +168,10 @@ NfcTag NtagEepromAdapter::read(unsigned int uiTimeOut)
 bool NtagEepromAdapter::clean()
 {
     if(!readCapabilityContainer())
-    {
+    {   
+        #ifdef NFC_SENSE_DEBUG
+            Serial.println("");
+        #endif
         return false;
     }
 
