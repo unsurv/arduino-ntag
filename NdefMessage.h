@@ -27,6 +27,7 @@ class NdefMessage
         void addTextRecord(String text, String encoding);
         void addUriRecord(String uri);
         void addUrlRecord(byte knownTypeUrlPrefix, String url);
+        void addUrlRecordTemp(byte knownTypeUrlPrefix, String url);
         void addUnknownRecord(byte *payload, int payloadLength);
         void addEmptyRecord();
 
