@@ -274,7 +274,20 @@ void NdefRecord::setPayload(const byte * payload, const int numBytes)
 
     _payload = (byte*)malloc(numBytes);
     memcpy(_payload, payload, numBytes);
-    _payloadLength = numBytes;
+    _payloadLength = 0x15;
+}
+
+void NdefRecord::setPayloadTemp(const byte * payload, const int numBytes)
+{
+    if (_payloadLength)
+    {
+        free(_payload);
+    }
+
+    _payload = (byte*)malloc(numBytes);
+    memcpy(_payload, payload, numBytes);
+    // force 0x15 payload length so it matches the dynamic part that gets written later
+    _payloadLength = 0x15;
 }
 
 String NdefRecord::getId()

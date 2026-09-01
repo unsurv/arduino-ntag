@@ -41,6 +41,7 @@ class NdefRecord
         void setTnf(byte tnf);
         void setType(const byte *type, const unsigned int numBytes);
         void setPayload(const byte *payload, const int numBytes);
+        void setPayloadTemp(const byte *payload, const int numBytes);
         void setId(const byte *id, const unsigned int numBytes);
 
         void print();
