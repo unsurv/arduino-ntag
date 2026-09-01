@@ -3,6 +3,8 @@
 #include "ntageepromadapter.h"
 #include "Ndef.h"
 
+// #define NFC_SENSE_DEBUG
+
 NtagEepromAdapter::NtagEepromAdapter(Ntag* ntag)
 {
     _ntag=ntag;
@@ -66,7 +68,6 @@ bool NtagEepromAdapter::write(NdefMessage& m, unsigned int uiTimeout){
 #ifdef NFC_SENSE_DEBUG
     Serial.print(F("messageLength "));Serial.println(messageLength);
     Serial.print(F("Tag Capacity "));Serial.println(tagCapacity);
-    nfc->PrintHex(encoded,bufferSize);
 #endif
 
     _ntag->writeEeprom(0,encoded,bufferSize);
@@ -76,6 +77,59 @@ bool NtagEepromAdapter::write(NdefMessage& m, unsigned int uiTimeout){
     //        Serial.print(buffer[i], HEX);Serial.print(" ");
     //        if((i+1)%8==0)Serial.println();
     //    }
+}
+
+bool NtagEepromAdapter::writeModIncreasedLen(NdefMessage& m, unsigned int uiTimeout){
+
+    if (isUnformatted())
+    {
+        Serial.println(F("WARNING: Tag is not formatted."));
+        return false;
+    }
+
+
+    messageLength  = m.getEncodedSize();
+    ndefStartIndex = 6;
+    calculateBufferSize();
+
+    tagCapacity = 2048;
+
+    if(bufferSize>tagCapacity) {
+
+        Serial.print(F("Encoded Message length exceeded tag Capacity "));Serial.println(tagCapacity);
+        return false;
+    }
+
+    uint8_t encoded[bufferSize];
+#ifdef NFC_SENSE_DEBUG
+    Serial.println("writeMod: messageLength " + String(messageLength));
+#endif
+    // static NDEF part
+    encoded[0] = 0xE1;
+    encoded[1] = 0x40;
+    encoded[2] = 0x80;
+    encoded[3] = 0x01;
+    encoded[4] = 0x03;
+    // Set message size.
+    encoded[5] = 0x19;
+    encoded[8] = 0x15;
+    
+    m.encode(encoded+ndefStartIndex);
+
+    
+    // this is always at least 1 byte copy because of terminator.
+    memset(encoded+ndefStartIndex+messageLength,0,bufferSize-ndefStartIndex-messageLength);
+    // encoded[ndefStartIndex+messageLength] = 0xFE; // terminator
+
+#ifdef NFC_SENSE_DEBUG
+    Serial.print(F("messageLength "));Serial.println(messageLength);
+    Serial.println("Writing to eeprom");
+    PrintHex(encoded,bufferSize);
+#endif
+    _ntag->writeEepromMod(0,encoded,bufferSize);
+    // _ntag->setLastNdefBlock();
+    _ntag->releaseI2c();
+    
 }
 
 bool NtagEepromAdapter::writeMod(NdefMessage& m, unsigned int uiTimeout){
@@ -122,13 +176,52 @@ bool NtagEepromAdapter::writeMod(NdefMessage& m, unsigned int uiTimeout){
     Serial.print(F("messageLength "));Serial.println(messageLength);
     Serial.println("Writing to eeprom");
     PrintHex(encoded,bufferSize);
-
-    for(int i=0;i<sizeof(buffer);i++){
-        Serial.print(buffer[i], HEX);Serial.print(" ");
-        if((i+1)%8==0)Serial.println();
 #endif
     _ntag->writeEepromMod(0,encoded,bufferSize);
-    _ntag->setLastNdefBlock();
+    // _ntag->setLastNdefBlock();
+    _ntag->releaseI2c();
+    
+}
+
+bool NtagEepromAdapter::writeTempMod(float tempCelcius){
+
+
+    // start at 0x20 to start writing at memory block 6
+
+    byte tempBytes[5];
+
+    String(tempCelcius).getBytes(tempBytes, sizeof(tempBytes));
+
+    bufferSize = 8;
+
+    // we only want to write one single block
+    messageLength  = 8;
+    ndefStartIndex = 2;
+    uint8_t encoded[messageLength];
+
+    #ifdef NFC_SENSE_DEBUG
+    Serial.println("writeMod: messageLength " + String(messageLength));
+    #endif
+    
+    // static part of last block we want to update
+    encoded[0] = 0x70;
+    encoded[1] = 0x3D;
+
+    memcpy(&encoded[2], tempBytes, 4);
+
+    encoded[6] = 0x43; // C for Celcius
+
+    // this is always at least 1 byte copy because of terminator.
+    // memset(encoded+ndefStartIndex+messageLength,0,bufferSize-ndefStartIndex-messageLength);
+    encoded[messageLength -1] = 0xFE; // terminator
+
+#ifdef NFC_SENSE_DEBUG
+    Serial.print(F("messageLength "));Serial.println(messageLength);
+    Serial.println("Writing to eeprom");
+    PrintHex(encoded,bufferSize);
+#endif
+    _ntag->writeEepromMod(0x18,encoded,bufferSize);
+    // _ntag->setLastNdefBlock();
     _ntag->releaseI2c();
     
 }
@@ -178,14 +271,11 @@ bool NtagEepromAdapter::clean()
     byte blocks = (tagCapacity / NTAG_BLOCK_SIZE);
 
     // factory tags have 0xFF, but OTP-CC blocks have already been set so we use 0x00
-    byte data[16];
+    byte data[40];
     memset(data,0x00,sizeof(data));
 
     for (int i = 0; i < blocks; i++) {
-        #ifdef NFC_SENSE_DEBUG
-        Serial.print(F("Wrote page "));Serial.print(i);Serial.print(F(" - "));
-        nfc->PrintHex(data, ULTRALIGHT_PAGE_SIZE);
-        #endif
+
         if (!_ntag->writeEepromMod(i,data,NTAG_BLOCK_SIZE)) {
             return false;
         }
@@ -280,7 +370,7 @@ void NtagEepromAdapter::findNdefMessage()
     }
 
     #ifdef NFC_SENSE_DEBUG
-    Serial.print(F("messageLength "));Serial.println(messageLength);
-    Serial.print(F("ndefStartIndex "));Serial.println(ndefStartIndex);
+        Serial.print(F("messageLength "));Serial.println(messageLength);
+        Serial.print(F("ndefStartIndex "));Serial.println(ndefStartIndex);
     #endif
 }
