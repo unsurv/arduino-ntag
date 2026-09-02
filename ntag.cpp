@@ -168,7 +168,7 @@ bool Ntag::readSram(word address, byte *pdata, byte length)
 
 bool Ntag::writeSram(word address, byte *pdata, byte length)
 {
-    return write(SRAM, address+SRAM_BASE_ADDR, pdata, length);
+    return writeMod(address, pdata, length);
 }
 
 bool Ntag::readEeprom(word address, byte *pdata, byte length)
@@ -194,8 +194,9 @@ bool Ntag::writeEepromMod(uint16_t address, byte *pdata, byte length)
 
 void Ntag::releaseI2c()
 {
-    //reset I2C_LOCKED bit at byte 2; bit 3; address 0x10A9
-    writeRegisterMod(0x10A9, 0x02, 0x08, 0x08);
+    // reset I2C_IF_LOCKED bit at byte 1; bit 1; address 0x10A9
+    writeRegisterMod(0x10A0, 0x01, 0x02, 0x00);
+
 }
 
 bool Ntag::write(BLOCK_TYPE bt, word byteAddress, byte* pdata, byte length)
@@ -691,7 +692,7 @@ bool Ntag::unlockEeprom(){
     return writeBlockTwoByteAddress(0x10A0, unlockBytes);
 }
 
-bool Ntag::disableNfc(){
+/* bool Ntag::disableNfc(){
     byte regValue[4];
 
     if(!readRegisterMod(0x10A1, 0, regValue, 2))
@@ -716,7 +717,7 @@ bool Ntag::disableNfc(){
         0x20     // REGDATA: bit 5 = 1
     );
 
-    byte regValue2[2];
+    byte regValue2[4];
 
     if(!readRegisterMod(0x10A1, 0, regValue2, 2))
     {   
@@ -762,9 +763,9 @@ bool Ntag::enableNfc(){
         0x00     // REGDATA: bit 5 = 0
     );
 
-    byte regValue2[2];
+    byte regValue2[4];
 
-    if(!readRegisterMod(0x10A1, 0, regValue2, 2))
+    if(!readRegisterMod(0x10A1, 0, regValue2, 4))
     {   
         Serial.println("NFC config get failed");
         return false;
@@ -779,5 +780,134 @@ bool Ntag::enableNfc(){
         }
     Serial.println();
     
+    return true;
+} */
+
+bool Ntag::disableNfc(){
+
+
+    if(!writeRegisterMod(
+        0x10A0,  // BL_AD
+        0x01,    // REGA
+        0x02,    // MASK: modify only bit 2
+        0x02     // REGDATA: bit 5 = 1
+    ))
+    {   
+        Serial.println("NFC config get failed");
+        return false;
+    }
+    
+    return true;
+}
+
+bool Ntag::enableNfc(){
+    
+       if(!writeRegisterMod(
+        0x10A0,  // BL_AD
+        0x01,    // REGA
+        0x02,    // MASK: modify only bit 2
+        0x00     // REGDATA: bit 5 = 1
+    ))
+    {   
+        Serial.println("NFC config get failed");
+        return false;
+    }
+    
+    return true;
+    
+}
+
+bool Ntag::enableSram(){
+    Serial.println("------------------------------------------");
+    byte configValue[4];
+
+    if(!readBlockTwoByteAddress(0x1037, configValue, 4))
+    {   
+        Serial.println("NFC config get failed");
+    }
+
+    #ifdef NFC_SENSE_DEBUG
+
+        for(byte i=0;i<4;i++)
+            {
+                Serial.print(configValue[i]);
+                Serial.print(" ");
+            }
+        Serial.println("------------------------------------------");
+
+    #endif
+    
+    // 0x00 0x02 0x0F 0x00 default values
+    // configValue[0] = 0x00;
+    // 10000110 for sram enable, sram mirror mode, auto enable arbiter when energy harvesting
+    // configValue2[1] = 0x86;
+    // 00000010
+    // configValue2[1] = 0x02;
+    // 00000110 for sram enable, sram mirror mode
+    // configValue2[1] = 0x06;
+    // 10000000 for auto enable normal arbiter
+    configValue[1] = 0x80;
+
+    // works from time to time
+    // 00000000 for auto enable normal arbiter
+    // configValue2[1] = 0x00;
+    
+    // configValue[2] = 0x0F;
+    // configValue[3] = 0x00;
+    
+    if(!writeBlockTwoByteAddress(0x1037, configValue))
+    {   
+        Serial.println("NFC config set failed");
+        return false;
+    }
+
+    return true;
+
+}
+
+bool Ntag::setEnergyHarvesting(){
+
+    byte configValue[4];
+    if(!readBlockTwoByteAddress(0x103D, configValue, 4))
+    {   
+        Serial.println("NFC set EH get failed");
+    }
+
+    delay(50);
+
+    for(byte i=0;i<4;i++)
+        {
+            Serial.print(configValue[i]);
+            Serial.print(" ");
+        }
+    Serial.println("------------------------------------------");
+    
+    byte configValue2[4];
+    // 45 0 15 0 old values
+    configValue2[0] = 0x2D;
+    // 00110101 to disable vout check
+    // configValue2[0] = 0x4D;
+    // 00110101 for >2.7 mA and power check enabled 
+    // configValue2[0] = 0x35;
+    configValue2[1] = 0x00; 
+    configValue2[2] = 0x0F;
+    configValue2[3] = 0x00;
+
+    for(byte i=0;i<4;i++)
+        {
+            Serial.print(configValue2[i]);
+            Serial.print(" ");
+        }
+    Serial.println();
+    Serial.println();
+    
+    if(!writeBlockTwoByteAddress(0x103D, configValue2))
+    {   
+        Serial.println("NFC set EH set failed");
+        return false;
+    }
+
+    Serial.println("------------------------------------------");
+
     return true;
 }

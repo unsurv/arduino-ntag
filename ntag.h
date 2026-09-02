@@ -48,9 +48,11 @@ public:
     bool lockEepromToI2c();
     bool unlockEeprom();
     void releaseI2c();
-    bool disableNfc();
-    bool disableNfcEeprom();
     bool enableNfc();
+    bool disableNfc();
+    bool enableSram();
+    bool setEnergyHarvesting();
+
 private:
     typedef enum{
         CONFIG=0x1,//BLOCK0 (putting this in a separate block type, because errors here can "brick" the device.)
