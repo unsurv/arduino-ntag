@@ -818,27 +818,10 @@ bool Ntag::enableNfc(){
 }
 
 bool Ntag::enableSram(){
-    Serial.println("------------------------------------------");
-    byte configValue[4];
-
-    if(!readBlockTwoByteAddress(0x1037, configValue, 4))
-    {   
-        Serial.println("NFC config get failed");
-    }
-
-    #ifdef NFC_SENSE_DEBUG
-
-        for(byte i=0;i<4;i++)
-            {
-                Serial.print(configValue[i]);
-                Serial.print(" ");
-            }
-        Serial.println("------------------------------------------");
-
-    #endif
     
+    byte configValue[4];
     // 0x00 0x02 0x0F 0x00 default values
-    // configValue[0] = 0x00;
+    configValue[0] = 0x00;
     // 10000110 for sram enable, sram mirror mode, auto enable arbiter when energy harvesting
     // configValue2[1] = 0x86;
     // 00000010
@@ -852,8 +835,8 @@ bool Ntag::enableSram(){
     // 00000000 for auto enable normal arbiter
     // configValue2[1] = 0x00;
     
-    // configValue[2] = 0x0F;
-    // configValue[3] = 0x00;
+    configValue[2] = 0x0F;
+    configValue[3] = 0x00;
     
     if(!writeBlockTwoByteAddress(0x1037, configValue))
     {   
@@ -866,48 +849,24 @@ bool Ntag::enableSram(){
 }
 
 bool Ntag::setEnergyHarvesting(){
-
-    byte configValue[4];
-    if(!readBlockTwoByteAddress(0x103D, configValue, 4))
-    {   
-        Serial.println("NFC set EH get failed");
-    }
-
-    delay(50);
-
-    for(byte i=0;i<4;i++)
-        {
-            Serial.print(configValue[i]);
-            Serial.print(" ");
-        }
-    Serial.println("------------------------------------------");
     
-    byte configValue2[4];
+    byte configValue[4];
     // 45 0 15 0 old values
-    configValue2[0] = 0x2D;
+    configValue[0] = 0x2D;
     // 00110101 to disable vout check
     // configValue2[0] = 0x4D;
     // 00110101 for >2.7 mA and power check enabled 
     // configValue2[0] = 0x35;
-    configValue2[1] = 0x00; 
-    configValue2[2] = 0x0F;
-    configValue2[3] = 0x00;
+    configValue[1] = 0x00; 
+    configValue[2] = 0x0F;
+    configValue[3] = 0x00;
 
-    for(byte i=0;i<4;i++)
-        {
-            Serial.print(configValue2[i]);
-            Serial.print(" ");
-        }
-    Serial.println();
-    Serial.println();
     
-    if(!writeBlockTwoByteAddress(0x103D, configValue2))
+    if(!writeBlockTwoByteAddress(0x103D, configValue))
     {   
         Serial.println("NFC set EH set failed");
         return false;
     }
-
-    Serial.println("------------------------------------------");
 
     return true;
 }

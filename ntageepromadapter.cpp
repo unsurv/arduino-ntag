@@ -111,8 +111,8 @@ bool NtagEepromAdapter::writeModIncreasedLen(NdefMessage& m, unsigned int uiTime
     encoded[3] = 0x01;
     encoded[4] = 0x03;
     // Set message size.
-    encoded[5] = 0x19;
-    encoded[8] = 0x15;
+    encoded[5] = 0x17;
+
     
     m.encode(encoded+ndefStartIndex);
 
@@ -129,7 +129,8 @@ bool NtagEepromAdapter::writeModIncreasedLen(NdefMessage& m, unsigned int uiTime
     _ntag->writeEepromMod(0,encoded,bufferSize);
     // _ntag->setLastNdefBlock();
     _ntag->releaseI2c();
-    
+
+    return true;
 }
 
 bool NtagEepromAdapter::writeMod(NdefMessage& m, unsigned int uiTimeout){
@@ -180,7 +181,8 @@ bool NtagEepromAdapter::writeMod(NdefMessage& m, unsigned int uiTimeout){
     _ntag->writeEepromMod(0,encoded,bufferSize);
     // _ntag->setLastNdefBlock();
     _ntag->releaseI2c();
-    
+
+    return true;
 }
 
 bool NtagEepromAdapter::writeTempMod(float tempCelcius){
@@ -188,39 +190,38 @@ bool NtagEepromAdapter::writeTempMod(float tempCelcius){
 
     // start at 0x20 to start writing at memory block 6
 
-    byte tempBytes[5];
-
+    byte tempBytes[7];
     String(tempCelcius).getBytes(tempBytes, sizeof(tempBytes));
 
-    bufferSize = 8;
-
-    // we only want to write one single block
-    messageLength  = 8;
-    ndefStartIndex = 2;
+    messageLength  = 10;
     uint8_t encoded[messageLength];
-
     #ifdef NFC_SENSE_DEBUG
     Serial.println("writeMod: messageLength " + String(messageLength));
     #endif
     
     // static part of last block we want to update
-    encoded[0] = 0x70;
-    encoded[1] = 0x3D;
+    encoded[0] = 0x2F; // /
+    encoded[1] = 0x74; // t
+    encoded[2] = 0x3D; // =
 
-    memcpy(&encoded[2], tempBytes, 4);
+    // ensure + and minus are part of the temperature
+    if (tempCelcius > 0) {
+        encoded[3] = 0x2B; // +
+        memcpy(&encoded[4], tempBytes, 4);
+    } else {
+        // - sign comes from String conversion
+        memcpy(&encoded[3], tempBytes, 5);
+    }
 
-    encoded[6] = 0x43; // C for Celcius
-
-    // this is always at least 1 byte copy because of terminator.
-    // memset(encoded+ndefStartIndex+messageLength,0,bufferSize-ndefStartIndex-messageLength);
-    encoded[messageLength -1] = 0xFE; // terminator
+    encoded[messageLength - 2] = 0x43; // C for Celcius
+    encoded[messageLength - 1] = 0xFE; // terminator
 
 #ifdef NFC_SENSE_DEBUG
     Serial.print(F("messageLength "));Serial.println(messageLength);
     Serial.println("Writing to eeprom");
-    PrintHex(encoded,bufferSize);
+    // PrintHex(encoded,messageLength);
 #endif
-    _ntag->writeEepromMod(0x18,encoded,bufferSize);
+    _ntag->writeEepromMod(0x14,encoded,messageLength);
     // _ntag->setLastNdefBlock();
     _ntag->releaseI2c();
     
@@ -274,12 +275,10 @@ bool NtagEepromAdapter::clean()
     byte data[40];
     memset(data,0x00,sizeof(data));
 
-    for (int i = 0; i < blocks; i++) {
-
-        if (!_ntag->writeEepromMod(i,data,NTAG_BLOCK_SIZE)) {
-            return false;
-        }
+    if (!_ntag->writeEepromMod(0,data,sizeof(data))) {
+        return false;
     }
+
     return true;
 }
 
@@ -316,7 +315,6 @@ bool NtagEepromAdapter::readCapabilityContainer()
     byte data[4];
     if (_ntag->getCapabilityContainer(data))
     {   
-        Serial.println("readCapabilityContainer: test");
 
         // http://apps4android.org/nfc-specifications/NFCForum-TS-Type-2-Tag_1.1.pdf
         if(data[0]!=0xE1)
